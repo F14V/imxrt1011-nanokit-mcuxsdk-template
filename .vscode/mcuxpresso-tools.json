@@ -1,0 +1,16 @@
+{
+  "version": "25.3",
+  "toolchainPath": "",
+  "linkedProjects": [],
+  "trustZoneType": "none",
+  "multicoreType": "none",
+  "projectType": "sdk-v2-freestanding",
+  "projectName": "imxrt1011-nanokit-mcuxsdk-template",
+  "sdk": {
+    "path": "",
+    "version": "26.9.0",
+    "boardId": "evkmimxrt1010",
+    "deviceId": "MIMXRT1011xxxxx",
+    "coreId": "core0"
+  }
+}

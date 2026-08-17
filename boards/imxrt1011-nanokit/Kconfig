@@ -1,0 +1,15 @@
+orsource "Kconfig.prjseg"
+
+config MCUX_HW_BOARD_imxrt1011-nanokit
+    bool
+    default y
+    imply MCUX_HW_DEVICE_MIMXRT1011
+
+    imply MCUX_COMPONENT_driver.common
+    imply MCUX_COMPONENT_driver.clock
+    # imply MCUX_COMPONENT_driver.iomuxc
+    # imply MCUX_COMPONENT_driver.igpio
+    # imply MCUX_COMPONENT_driver.dcdc_1
+    # imply MCUX_COMPONENT_driver.gpc_1
+    # imply MCUX_COMPONENT_driver.src
+    # imply MCUX_COMPONENT_driver.pmu

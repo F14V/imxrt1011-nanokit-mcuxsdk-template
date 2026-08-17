@@ -1,0 +1,7 @@
+__repo__/
+
+build/
+
+cfg_tools/
+
+mcux_include.json
