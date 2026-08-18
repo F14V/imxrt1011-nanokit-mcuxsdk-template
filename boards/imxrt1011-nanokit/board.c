@@ -29,14 +29,16 @@ void BOARD_ConfigMPU(void)
     const uint32_t nonCacheStart = (uint32_t)__NCACHE_REGION_START;
     const uint32_t size = (uint32_t)__NCACHE_REGION_SIZE;
 #endif
-    volatile uint32_t i = 0;
+    /* Determine MPU regions count */
+    const uint32_t regionCount = (MPU->TYPE & MPU_TYPE_DREGION_Msk) >> MPU_TYPE_DREGION_Pos;
+    assert(regionCount >= 10U);
 
     /* Disable I cache and D cache */
-    if (SCB_CCR_IC_Msk == (SCB_CCR_IC_Msk & SCB->CCR))
+    if ((SCB->CCR & SCB_CCR_IC_Msk) != 0U)
     {
         SCB_DisableICache();
     }
-    if (SCB_CCR_DC_Msk == (SCB_CCR_DC_Msk & SCB->CCR))
+    if ((SCB->CCR & SCB_CCR_DC_Msk) != 0U)
     {
         SCB_DisableDCache();
     }
@@ -44,102 +46,145 @@ void BOARD_ConfigMPU(void)
     /* Disable MPU */
     ARM_MPU_Disable();
 
-    /* MPU configure:
-     * Use ARM_MPU_RASR(DisableExec, AccessPermission, TypeExtField, IsShareable, IsCacheable, IsBufferable, SubRegionDisable, Size) API in mpu_armv7.h.
-     * param DisableExec       Instruction access (XN) disable bit, 0=instruction fetches enabled, 1=instruction fetches disabled.
-     * param AccessPermission  Data access permissions, allows you to configure read/write access for User and Privileged mode.
-     *      Use MACROS defined in mpu_armv7.h:
-     * ARM_MPU_AP_NONE/ARM_MPU_AP_PRIV/ARM_MPU_AP_URO/ARM_MPU_AP_FULL/ARM_MPU_AP_PRO/ARM_MPU_AP_RO
-     * Combine TypeExtField/IsShareable/IsCacheable/IsBufferable to configure MPU memory access attributes.
-     *  TypeExtField  IsShareable  IsCacheable  IsBufferable   Memory Attribute    Shareability        Cache
-     *     0             x           0           0             Strongly Ordered    shareable
-     *     0             x           0           1              Device             shareable
-     *     0             0           1           0              Normal             not shareable   Outer and inner write
-     * through no write allocate
-     *     0             0           1           1              Normal             not shareable   Outer and inner write
-     * back no write allocate
-     *     0             1           1           0              Normal             shareable       Outer and inner write
-     * through no write allocate
-     *     0             1           1           1              Normal             shareable       Outer and inner write
-     * back no write allocate
-     *     1             0           0           0              Normal             not shareable   outer and inner
-     * noncache
-     *     1             1           0           0              Normal             shareable       outer and inner
-     * noncache
-     *     1             0           1           1              Normal             not shareable   outer and inner write
-     * back write/read allocate
-     *     1             1           1           1              Normal             shareable       outer and inner write
-     * back write/read allocate
-     *     2             x           0           0              Device              not shareable
-     *  Above are normal use settings, if you want to see more details or want to config different inner/outer cache policy,
-     *  please refer to Table 4-55 /4-56 in arm cortex-M7 generic user guide <dui0646b_cortex_m7_dgug.pdf>
-     * param SubRegionDisable  Sub-region disable field. 0=sub-region is enabled, 1=sub-region is disabled.
-     * param Size              Region size of the region to be configured. use ARM_MPU_REGION_SIZE_xxx MACRO in mpu_armv7.h.
+    /*
+     * Region 0: Default deny
+     * Range:    0x00000000-0xFFFFFFFF (4 GiB)
+     * Access:   None, execute never
+     * Memory:   Strongly-ordered, inherently shareable, non-cacheable, non-bufferable
      */
+    ARM_MPU_SetRegion(
+        ARM_MPU_RBAR(0U, 0x00000000U),
+        ARM_MPU_RASR(1U, ARM_MPU_AP_NONE, 0U, 0U, 0U, 0U, 0U, ARM_MPU_REGION_SIZE_4GB)
+    );
 
     /*
-     * Add default region to deny access to whole address space to workaround speculative prefetch.
-     * Refer to Arm errata 1013783-B for more details.
-     *
+     * Region 1: ITCM
+     * Range:    0x00000000-0x00007FFF (32 KiB)
+     * Access:   Read-Only, executable
+     * Memory:   Normal, non-shareable, non-cacheable
      */
-    /* Region 0 setting: Instruction access disabled, No data access permission. */
-    MPU->RBAR = ARM_MPU_RBAR(0, 0x00000000U);
-    MPU->RASR = ARM_MPU_RASR(1, ARM_MPU_AP_NONE, 0, 0, 0, 0, 0, ARM_MPU_REGION_SIZE_4GB);
+    ARM_MPU_SetRegion(
+        ARM_MPU_RBAR(1U, 0x00000000U),
+        ARM_MPU_RASR(0U, ARM_MPU_AP_RO, 1U, 0U, 0U, 0U, 0U, ARM_MPU_REGION_SIZE_32KB)
+    );
 
-    /* Region 1 setting: Memory with Device type, not shareable, non-cacheable. */
-    MPU->RBAR = ARM_MPU_RBAR(1, 0x80000000U);
-    MPU->RASR = ARM_MPU_RASR(1, ARM_MPU_AP_FULL, 2, 0, 0, 0, 0, ARM_MPU_REGION_SIZE_512MB);
+    /*
+     * Region 2: ROMCP
+     * Range:    0x00200000-0x0020FFFF (64 KiB)
+     * Access:   Read-Only, executable
+     * Memory:   Normal, non-shareable, write-back, read-allocate, no-write-allocate
+     */
+    ARM_MPU_SetRegion(
+        ARM_MPU_RBAR(2U, 0x00200000U),
+        ARM_MPU_RASR(0U, ARM_MPU_AP_RO, 0U, 0U, 1U, 1U, 0U, ARM_MPU_REGION_SIZE_64KB)
+    );
 
-    /* Region 2 setting: Memory with Device type, not shareable, non-cacheable. */
-    MPU->RBAR = ARM_MPU_RBAR(2, 0x60000000U);
-    MPU->RASR = ARM_MPU_RASR(1, ARM_MPU_AP_FULL, 2, 0, 0, 0, 0, ARM_MPU_REGION_SIZE_512MB);
+    /*
+     * Region 3: DTCM
+     * Range:    0x20000000-0x20007FFF (32 KiB)
+     * Access:   Full, execute never
+     * Memory:   Normal, non-shareable, non-cacheable
+     */
+    ARM_MPU_SetRegion(
+        ARM_MPU_RBAR(3U, 0x20000000U),
+        ARM_MPU_RASR(1U, ARM_MPU_AP_FULL, 1U, 0U, 0U, 0U, 0U, ARM_MPU_REGION_SIZE_32KB)
+    );
+
+    /*
+     * Region 4: OCRAM
+     * Range:    0x20200000-0x2020FFFF (64 KiB)
+     * Access:   Full, execute never
+     * Memory:   Normal, non-shareable, write-back, read/write-allocate
+     */
+    ARM_MPU_SetRegion(
+        ARM_MPU_RBAR(4U, 0x20200000U),
+        ARM_MPU_RASR(1U, ARM_MPU_AP_FULL, 1U, 0U, 1U, 1U, 0U, ARM_MPU_REGION_SIZE_64KB)
+    );
+
+    /*
+     * Region 5: AIPS-1 and AIPS-2
+     * Range:    0x40000000-0x401FFFFF (2 MiB)
+     * Access:   Full, execute never
+     * Memory:   Device, non-shareable, non-cacheable, non-bufferable
+     */
+    ARM_MPU_SetRegion(
+        ARM_MPU_RBAR(5U, 0x40000000U),
+        ARM_MPU_RASR(1U, ARM_MPU_AP_FULL, 2U, 0U, 0U, 0U, 0U, ARM_MPU_REGION_SIZE_2MB)
+    );
+
+    /*
+     * Region 6: GPIO2
+     * Range:    0x42000000-0x43FFFFFF (32 MiB)
+     * Access:   Full, execute never
+     * Memory:   Device, non-shareable, non-cacheable, non-bufferable
+     */
+    ARM_MPU_SetRegion(
+        ARM_MPU_RBAR(6U, 0x42000000U),
+        ARM_MPU_RASR(1U, ARM_MPU_AP_FULL, 2U, 0U, 0U, 0U, 0U, ARM_MPU_REGION_SIZE_32MB)
+    );
+
+    /*
+     * Region 7: FlexSPI aperture
+     * Range:    0x60000000-0x7FFFFFFF (512 MiB)
+     * Access:   Full, execute never
+     * Memory:   Device, non-shareable, non-cacheable, non-bufferable
+     */
+    ARM_MPU_SetRegion(
+        ARM_MPU_RBAR(7U, 0x60000000U),
+        ARM_MPU_RASR(1U, ARM_MPU_AP_FULL, 2U, 0U, 0U, 0U, 0U, ARM_MPU_REGION_SIZE_512MB)
+    );
 
 #if defined(XIP_EXTERNAL_FLASH) && (XIP_EXTERNAL_FLASH == 1)
-    /* Region 3 setting: Memory with Normal type, not shareable, outer/inner write back. */
-    MPU->RBAR = ARM_MPU_RBAR(3, 0x60000000U);
-    MPU->RASR = ARM_MPU_RASR(0, ARM_MPU_AP_RO, 0, 0, 1, 1, 0, ARM_MPU_REGION_SIZE_16MB);
+    /*
+     * Region 8: XIP flash override
+     * Range:    0x60000000-0x60FFFFFF (16 MiB)
+     * Access:   Read-Only, executable
+     * Memory:   Normal, non-shareable, write-back, read-allocate, no-write-allocate
+     */
+    ARM_MPU_SetRegion(
+        ARM_MPU_RBAR(8U, 0x60000000U),
+        ARM_MPU_RASR(0U, ARM_MPU_AP_RO, 0U, 0U, 1U, 1U, 0U, ARM_MPU_REGION_SIZE_16MB)
+    );
+#else
+    ARM_MPU_ClrRegion(8U);
 #endif
 
-    /* Region 4 setting: Memory with Device type, not shareable, non-cacheable. */
-    MPU->RBAR = ARM_MPU_RBAR(4, 0x00000000U);
-    MPU->RASR = ARM_MPU_RASR(1, ARM_MPU_AP_FULL, 2, 0, 0, 0, 0, ARM_MPU_REGION_SIZE_1GB);
-
-    /* Region 5 setting: Memory with Normal type, not shareable, outer/inner write back */
-    MPU->RBAR = ARM_MPU_RBAR(5, 0x00000000U);
-    MPU->RASR = ARM_MPU_RASR(0, ARM_MPU_AP_FULL, 0, 0, 1, 1, 0, ARM_MPU_REGION_SIZE_32KB);
-
-    /* Region 6 setting: Memory with Normal type, not shareable, outer/inner write back */
-    MPU->RBAR = ARM_MPU_RBAR(6, 0x20000000U);
-    MPU->RASR = ARM_MPU_RASR(0, ARM_MPU_AP_FULL, 0, 0, 1, 1, 0, ARM_MPU_REGION_SIZE_32KB);
-
-    /* Region 7 setting: Memory with Normal type, not shareable, outer/inner write back */
-    MPU->RBAR = ARM_MPU_RBAR(7, 0x20200000U);
-    MPU->RASR = ARM_MPU_RASR(0, ARM_MPU_AP_FULL, 0, 0, 1, 1, 0, ARM_MPU_REGION_SIZE_64KB);
-
-    while ((size >> i) > 0x1U)
+    if (size != 0U)
     {
-        i++;
+        /* Configure the optional linker-defined non-cacheable region.
+         * MPU regions must be power-of-two sized, at least 32 bytes, and naturally aligned.
+         */
+        assert(size >= 32U);
+        assert((size & (size - 1U)) == 0U);
+        assert((nonCacheStart & (size - 1U)) == 0U);
+
+        uint32_t sizeField = 0U;
+        while ((size >> sizeField) > 1U)
+        {
+            sizeField++;
+        }
+
+        /*
+         * Region 9: Non-cacheable RAM override
+         * Range:    Linker-defined
+         * Access:   Full, execute never
+         * Memory:   Normal, non-shareable, non-cacheable
+         */
+        ARM_MPU_SetRegion(
+            ARM_MPU_RBAR(9U, nonCacheStart),
+            ARM_MPU_RASR(1U, ARM_MPU_AP_FULL, 1U, 0U, 0U, 0U, 0U, sizeField - 1U)
+        );
+    }
+    else
+    {
+        ARM_MPU_ClrRegion(9U);
     }
 
-    if (i != 0)
+    /* Clear remaining MPU regions */
+    for (uint32_t region = 10U; region < regionCount; region++)
     {
-        /* The MPU region size should be 2^N, 5<=N<=32, region base should be multiples of size. */
-        assert(!(nonCacheStart % size));
-        assert(size == (uint32_t)(1 << i));
-        assert(i >= 5);
-
-        /* Region 8 setting: Memory with Normal type, not shareable, non-cacheable */
-        MPU->RBAR = ARM_MPU_RBAR(8, nonCacheStart);
-        MPU->RASR = ARM_MPU_RASR(0, ARM_MPU_AP_FULL, 1, 0, 0, 0, 0, i - 1);
+        ARM_MPU_ClrRegion(region);
     }
-
-    /* Region 9 setting: Memory with Device type, not shareable, non-cacheable */
-    MPU->RBAR = ARM_MPU_RBAR(9, 0x40000000);
-    MPU->RASR = ARM_MPU_RASR(1, ARM_MPU_AP_FULL, 2, 0, 0, 0, 0, ARM_MPU_REGION_SIZE_2MB);
-
-    /* Region 10 setting: Memory with Device type, not shareable, non-cacheable */
-    MPU->RBAR = ARM_MPU_RBAR(10, 0x42000000);
-    MPU->RASR = ARM_MPU_RASR(1, ARM_MPU_AP_FULL, 2, 0, 0, 0, 0, ARM_MPU_REGION_SIZE_32MB);
 
     /* Enable MPU */
     ARM_MPU_Enable(MPU_CTRL_PRIVDEFENA_Msk | MPU_CTRL_HFNMIENA_Msk);
