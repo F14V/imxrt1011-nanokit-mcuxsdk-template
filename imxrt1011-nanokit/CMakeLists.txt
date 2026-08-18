@@ -21,3 +21,5 @@ mcux_add_include(
 )
 
 mcux_add_config_mex_path(PATH .)
+
+include(${CMAKE_CURRENT_LIST_DIR}/reconfig.cmake)

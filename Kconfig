@@ -1,1 +1,3 @@
+# Application defaults must precede the SDK defaults they refine
+rsource "${board}/Kconfig"
 rsource "${SdkRootDirPath}/Kconfig.mcuxpresso"
