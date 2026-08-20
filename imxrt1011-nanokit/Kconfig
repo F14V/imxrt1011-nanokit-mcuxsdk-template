@@ -1,3 +1,10 @@
 menu "Application Board Configuration"
 
+config APP_BOARD_config.memory.use_ocram_for_data
+    bool "Place data and bss sections in OCRAM instead of DTCM"
+    default n
+    help
+        Place ordinary data and bss in OCRAM instead of DTCM for FlexSPI NOR builds.
+        Data marked for quick access remains in DTCM.
+
 endmenu
