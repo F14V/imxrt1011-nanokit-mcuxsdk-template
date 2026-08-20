@@ -31,6 +31,14 @@ mcux_add_include(
         .
 )
 
+if(NOT CONFIG_APP_BOARD_config.debug_console.disabled)
+    target_compile_definitions(
+        ${MCUX_SDK_PROJECT_NAME}
+        PRIVATE
+            SDK_DEBUGCONSOLE=1
+    )
+endif()
+
 target_compile_options(
     ${MCUX_SDK_PROJECT_NAME}
     PRIVATE

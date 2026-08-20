@@ -1,3 +1,40 @@
 menu "Application Configuration"
 
+choice APP_BOARD_config.debug_console.backend
+    prompt "Debug console"
+    default APP_BOARD_config.debug_console.disabled
+
+config APP_BOARD_config.debug_console.disabled
+    bool "Disabled"
+
+config APP_BOARD_config.debug_console.usb_cdc
+    bool "USB CDC"
+
+config APP_BOARD_config.debug_console.lpuart
+    bool "LPUART1"
+
+endchoice
+
+# Map the application selection onto the SDK component graph.
+config MCUX_COMPONENT_utility.assert
+    default y if !APP_BOARD_config.debug_console.disabled
+
+config MCUX_PRJSEG_utility.debug_console_transfer_non_blocking
+    default y if !APP_BOARD_config.debug_console.disabled
+
+choice MCUX_DEPENDENCY_COMPONENT_component.serial_manager_DEPEND_component.selection
+    default MCUX_DEPENDENCY_COMPONENT_component.serial_manager_DEPEND_component.serial_manager_usb_cdc if APP_BOARD_config.debug_console.usb_cdc
+    default MCUX_DEPENDENCY_COMPONENT_component.serial_manager_DEPEND_component.serial_manager_uart if APP_BOARD_config.debug_console.lpuart
+endchoice
+
+# Keep using the SDK template configuration headers, as in the existing setup.
+config MCUX_PRJSEG_component.osa_interface.generated_config
+    default n if APP_BOARD_config.debug_console.usb_cdc
+
+config MCUX_PRJSEG_component.osa_interface.osa_macro_used
+    default n if APP_BOARD_config.debug_console.usb_cdc
+
+config MCUX_MISC_USB_DEVICE_GENERATE_CONFIG
+    default n if APP_BOARD_config.debug_console.usb_cdc
+
 endmenu
