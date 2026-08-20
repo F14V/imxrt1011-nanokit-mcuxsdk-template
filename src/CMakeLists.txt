@@ -10,10 +10,20 @@ set(WARNING_OPTIONS
     -Wno-unused-parameter
 )
 
+file(
+    GLOB_RECURSE APP_SOURCES
+    CONFIGURE_DEPENDS
+    RELATIVE "${CMAKE_CURRENT_LIST_DIR}"
+        *.c
+        *.cpp
+        *.h
+        *.hpp
+        *.S
+)
+
 mcux_add_source(
     SOURCES
-        *.c
-        *.h
+        ${APP_SOURCES}
 )
 
 mcux_add_include(
